@@ -64,13 +64,9 @@ endif()
 # Find build dependencies
 ########################################################################
 find_package(PkgConfig)
-find_package(LibUSB)
 set(THREADS_USE_PTHREADS_WIN32 true)
 find_package(Threads)
 
-if(NOT LIBUSB_FOUND)
-    message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
-endif()
 if(NOT THREADS_FOUND)
     message(FATAL_ERROR "pthreads(-win32) required to compile rtl-sdr")
 endif()
@@ -79,7 +75,6 @@ endif()
 ########################################################################
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
-    ${LIBUSB_INCLUDE_DIR}
     ${THREADS_PTHREADS_INCLUDE_DIR}
 )
 
@@ -103,28 +98,6 @@ add_custom_target(uninstall
 )
 
 ########################################################################
-# Install udev rules
-########################################################################
-option(INSTALL_UDEV_RULES "Install udev rules for RTL-SDR" OFF)
-if (INSTALL_UDEV_RULES)
-    install (
-        FILES rtl-sdr.rules
-        DESTINATION "/etc/udev/rules.d"
-        COMPONENT "udev"
-        )
-else (INSTALL_UDEV_RULES)
-    message (STATUS "Udev rules not being installed, install them with -DINSTALL_UDEV_RULES=ON")
-endif (INSTALL_UDEV_RULES)
-
-option(DETACH_KERNEL_DRIVER "Detach kernel driver if loaded" OFF)
-if (DETACH_KERNEL_DRIVER)
-    message (STATUS "Building with kernel driver detaching enabled")
-    add_definitions(-DDETACH_KERNEL_DRIVER=1)
-else (DETACH_KERNEL_DRIVER)
-    message (STATUS "Building with kernel driver detaching disabled, use -DDETACH_KERNEL_DRIVER=ON to enable")
-endif (DETACH_KERNEL_DRIVER)
-
-########################################################################
 # Add subdirectories
 ########################################################################
 add_subdirectory(include)
@@ -133,14 +106,6 @@ add_subdirectory(src)
 ########################################################################
 # Create Pkg Config File
 ########################################################################
-FOREACH(inc ${LIBUSB_INCLUDE_DIR})
-    LIST(APPEND RTLSDR_PC_CFLAGS "-I${inc}")
-ENDFOREACH(inc)
-
-FOREACH(lib ${LIBUSB_LIBRARY_DIRS})
-    LIST(APPEND RTLSDR_PC_LIBS "-L${lib}")
-ENDFOREACH(lib)
-
 # use space-separation format for the pc file
 STRING(REPLACE ";" " " RTLSDR_PC_CFLAGS "${RTLSDR_PC_CFLAGS}")
 STRING(REPLACE ";" " " RTLSDR_PC_LIBS "${RTLSDR_PC_LIBS}")
