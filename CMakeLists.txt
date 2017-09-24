@@ -70,12 +70,23 @@ find_package(Threads)
 if(NOT THREADS_FOUND)
     message(FATAL_ERROR "pthreads(-win32) required to compile rtl-sdr")
 endif()
+
+find_path(LIMESUITE_INCLUDE_DIR NAMES LimeSuite.h SUFFIX lime)
+find_library(LIMESUITE_LIBRARIES NAMES LimeSuite)
+
+message(STATUS "LIMESUITE_INCLUDE_DIR: ${LIMESUITE_INCLUDE_DIR}")
+message(STATUS "LIMESUITE_LIBRARIES: ${LIMESUITE_LIBRARIES}")
+if (NOT LIMESUITE_INCLUDE_DIR OR NOT LIMESUITE_LIBRARIES)
+    message(FATAL_ERROR "LimeSuite development files not found")
+endif()
+
 ########################################################################
 # Setup the include and linker paths
 ########################################################################
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${THREADS_PTHREADS_INCLUDE_DIR}
+    ${LIMESUITE_INCLUDE_DIR}
 )
 
 #link_directories(

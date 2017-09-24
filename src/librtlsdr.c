@@ -23,131 +23,243 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "rtl-sdr.h"
+#include <lime/LimeSuite.h>
 
 struct rtlsdr_dev {
-	
+	lms_device_t *lms;
+	char manufact[256];
+	char product[256];
+	char serial[256];
+	int channel;
 };
 
 int rtlsdr_set_xtal_freq(rtlsdr_dev_t *dev, uint32_t rtl_freq, uint32_t tuner_freq)
 {
+	return 0;
 }
 
 int rtlsdr_get_xtal_freq(rtlsdr_dev_t *dev, uint32_t *rtl_freq, uint32_t *tuner_freq)
 {
+	return 0;
 }
 
 int rtlsdr_get_usb_strings(rtlsdr_dev_t *dev, char *manufact, char *product,
 			    char *serial)
 {
+	if (manufact != NULL) strcpy(manufact, dev->manufact);
+	if (product != NULL) strcpy(product, dev->product);
+	if (serial != NULL) strcpy(serial, dev->serial);
+	return 0;
 }
 
 int rtlsdr_write_eeprom(rtlsdr_dev_t *dev, uint8_t *data, uint8_t offset, uint16_t len)
 {
+	return -1;
 }
 
 int rtlsdr_read_eeprom(rtlsdr_dev_t *dev, uint8_t *data, uint8_t offset, uint16_t len)
 {
+	return -1;
 }
 
 int rtlsdr_set_center_freq(rtlsdr_dev_t *dev, uint32_t freq)
 {
+	return LMS_SetLOFrequency(dev->lms, false, dev->channel, (double)(freq));
 }
 
 uint32_t rtlsdr_get_center_freq(rtlsdr_dev_t *dev)
 {
+	double freq;
+	int r = LMS_GetLOFrequency(dev->lms, false, dev->channel, &freq);
+	if (r == LMS_SUCCESS) return (uint32_t)(freq);
+	return -0.0;
 }
 
 int rtlsdr_set_freq_correction(rtlsdr_dev_t *dev, int ppm)
 {
+	return -1;
 }
 
 int rtlsdr_get_freq_correction(rtlsdr_dev_t *dev)
 {
+	return 0;
 }
 
 enum rtlsdr_tuner rtlsdr_get_tuner_type(rtlsdr_dev_t *dev)
 {
+	return RTLSDR_TUNER_UNKNOWN;
 }
 
 int rtlsdr_get_tuner_gains(rtlsdr_dev_t *dev, int *gains)
 {
+	return 0;
 }
 
 int rtlsdr_set_tuner_bandwidth(rtlsdr_dev_t *dev, uint32_t bw)
 {
+	return LMS_SetLPFBW(dev->lms, false, dev->channel, (double)(bw));
 }
 
 int rtlsdr_set_tuner_gain(rtlsdr_dev_t *dev, int gain)
 {
+	return 0;
 }
 
 int rtlsdr_get_tuner_gain(rtlsdr_dev_t *dev)
 {
+	return 0;
 }
 
 int rtlsdr_set_tuner_if_gain(rtlsdr_dev_t *dev, int stage, int gain)
 {
+	//gain is in 10ths of a dB
+	return LMS_SetGaindB(dev->lms, false, dev->channel, (double)(gain)/10);
 }
 
 int rtlsdr_set_tuner_gain_mode(rtlsdr_dev_t *dev, int mode)
 {
+	//always manual
+	return 0;
 }
 
 int rtlsdr_set_sample_rate(rtlsdr_dev_t *dev, uint32_t samp_rate)
 {
+	int ovs = 32;
+	while (samp_rate*ovs > 640e6) ovs /= 2;
+	if (ovs < 1) return -1;
+	return LMS_SetSampleRateDir(dev->lms, false, (double)(samp_rate), ovs);
 }
 
 uint32_t rtlsdr_get_sample_rate(rtlsdr_dev_t *dev)
 {
+	double host_Hz, rf_Hz;
+	int r = LMS_GetSampleRate(dev->lms, false, dev->channel, &host_Hz, &rf_Hz);
+	if (r == LMS_SUCCESS) return (uint32_t)(host_Hz);
+	return -0.0;
 }
 
 int rtlsdr_set_testmode(rtlsdr_dev_t *dev, int on)
 {
+	return 0;
 }
 
 int rtlsdr_set_agc_mode(rtlsdr_dev_t *dev, int on)
 {
+	return 0;
 }
 
 int rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on)
 {
+	return 0;
 }
 
 int rtlsdr_get_direct_sampling(rtlsdr_dev_t *dev)
 {
+	return 0;
 }
 
 int rtlsdr_set_offset_tuning(rtlsdr_dev_t *dev, int on)
 {
+	return 0;
 }
 
 int rtlsdr_get_offset_tuning(rtlsdr_dev_t *dev)
 {
+	return 0;
 }
 
 uint32_t rtlsdr_get_device_count(void)
 {
+	lms_info_str_t dev_list[256];
+	return LMS_GetDeviceList(dev_list);
+}
+
+static void read_info_field(const char *dev_info, const char *key, char *output)
+{
+	char *comma;
+	size_t len;
+	char *start = (char *)dev_info;
+	if (key != NULL) start = strstr(dev_info, key);
+	if (start == NULL)
+	{
+		printf("start == NULL!\n");
+		output[0] = '\0';
+		return;
+	}
+	if (start != NULL && key != NULL) start += strlen(key);
+
+	comma = strstr(start, ",");
+	len = (comma == NULL)?((int)strlen(dev_info)-(dev_info-start)):comma-start;
+	memcpy(output, start, len);
+	output[len] = '\0';
 }
 
 const char *rtlsdr_get_device_name(uint32_t index)
 {
+	static __thread char name[256];
+	lms_info_str_t dev_list[256];
+	int r = LMS_GetDeviceList(dev_list);
+	if (r < (int)index) return "";
+	read_info_field(&dev_list[index][0], NULL, name);
+	return name;
 }
 
 int rtlsdr_get_device_usb_strings(uint32_t index, char *manufact,
 				   char *product, char *serial)
 {
+	lms_info_str_t dev_list[256];
+	int r = LMS_GetDeviceList(dev_list);
+	if (r < (int)index) return -1;
+	if (manufact != NULL) strcpy(manufact, "LimeSuite");
+	if (product != NULL) read_info_field(&dev_list[index][0], NULL, product);
+	if (serial != NULL) read_info_field(&dev_list[index][0], "serial=", serial);
+	return 0;
 }
 
 int rtlsdr_get_index_by_serial(const char *serial)
 {
+	lms_info_str_t dev_list[256];
+	int i = 0;
+	int r = LMS_GetDeviceList(dev_list);
+	if (serial == NULL) return -1;
+	if (r == 0) return -2;
+	for (i = 0; i < r; i++)
+	{
+		char serial_i[256];
+		read_info_field(&dev_list[i][0], "serial=", serial_i);
+		if (strcmp(serial, serial_i) == 0) return i;
+	}
+	return -3;
 }
 
 int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 {
+	lms_info_str_t dev_list[256];
+	int r = LMS_GetDeviceList(dev_list);
+	if (r < (int)index) return -1;
+	*out_dev = (rtlsdr_dev_t *)calloc(1, sizeof(rtlsdr_dev_t));
+	r = LMS_Open(&((*out_dev)->lms), dev_list[index], NULL);
+	if (r != LMS_SUCCESS)
+	{
+		free(*out_dev);
+		return -1;
+	}
+
+	strcpy((*out_dev)->manufact, "LimeSuite");
+	read_info_field(&dev_list[index][0], NULL, (*out_dev)->product);
+	read_info_field(&dev_list[index][0], "serial=", (*out_dev)->serial);
+	(*out_dev)->channel = 0; //default is channel 0 (A)
+	LMS_Init((*out_dev)->lms);
+	LMS_EnableChannel((*out_dev)->lms, false, (*out_dev)->channel, true);
+	return 0;
 }
 
 int rtlsdr_close(rtlsdr_dev_t *dev)
 {
+	LMS_EnableChannel(dev->lms, false, dev->channel, false);
+	LMS_Close(dev->lms);
+	free(dev);
+	return 0;
 }
 
 int rtlsdr_reset_buffer(rtlsdr_dev_t *dev)
@@ -160,6 +272,8 @@ int rtlsdr_read_sync(rtlsdr_dev_t *dev, void *buf, int len, int *n_read)
 
 int rtlsdr_wait_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx)
 {
+	//deprecated anyway...
+	return -1;
 }
 
 int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
@@ -173,5 +287,5 @@ int rtlsdr_cancel_async(rtlsdr_dev_t *dev)
 
 int rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on)
 {
-	
+	return 0;
 }

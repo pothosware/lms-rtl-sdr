@@ -43,7 +43,7 @@ ENDIF(MSVC)
 # Setup shared library variant
 ########################################################################
 add_library(rtlsdr_shared SHARED ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_shared ${LIBUSB_LIBRARIES})
+target_link_libraries(rtlsdr_shared ${LIMESUITE_LIBRARIES})
 set_target_properties(rtlsdr_shared PROPERTIES DEFINE_SYMBOL "rtlsdr_EXPORTS")
 set_target_properties(rtlsdr_shared PROPERTIES OUTPUT_NAME rtlsdr)
 set_target_properties(rtlsdr_shared PROPERTIES SOVERSION ${MAJOR_VERSION})
@@ -53,7 +53,7 @@ set_target_properties(rtlsdr_shared PROPERTIES VERSION ${LIBVER})
 # Setup static library variant
 ########################################################################
 add_library(rtlsdr_static STATIC ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_static ${LIBUSB_LIBRARIES})
+target_link_libraries(rtlsdr_static ${LIMESUITE_LIBRARIES})
 set_property(TARGET rtlsdr_static APPEND PROPERTY COMPILE_DEFINITIONS "rtlsdr_STATIC" )
 if(NOT WIN32)
 # Force same library filename for static and shared variants of the library
@@ -89,31 +89,24 @@ add_executable(rtl_power rtl_power.c)
 set(INSTALL_TARGETS rtlsdr_shared rtlsdr_static rtl_sdr rtl_tcp rtl_test rtl_fm rtl_eeprom rtl_adsb rtl_power)
 
 target_link_libraries(rtl_sdr rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_tcp rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_test rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_fm rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_eeprom rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_adsb rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_link_libraries(rtl_power rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 if(UNIX)
