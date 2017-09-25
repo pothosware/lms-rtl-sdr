@@ -31,6 +31,9 @@ struct rtlsdr_dev {
 	char product[256];
 	char serial[256];
 	int channel;
+	double rate;
+	lms_stream_t stream;
+	bool stream_active;
 };
 
 int rtlsdr_set_xtal_freq(rtlsdr_dev_t *dev, uint32_t rtl_freq, uint32_t tuner_freq)
@@ -64,13 +67,13 @@ int rtlsdr_read_eeprom(rtlsdr_dev_t *dev, uint8_t *data, uint8_t offset, uint16_
 
 int rtlsdr_set_center_freq(rtlsdr_dev_t *dev, uint32_t freq)
 {
-	return LMS_SetLOFrequency(dev->lms, false, dev->channel, (double)(freq));
+	return LMS_SetLOFrequency(dev->lms, LMS_CH_RX, dev->channel, (double)(freq));
 }
 
 uint32_t rtlsdr_get_center_freq(rtlsdr_dev_t *dev)
 {
 	double freq;
-	int r = LMS_GetLOFrequency(dev->lms, false, dev->channel, &freq);
+	int r = LMS_GetLOFrequency(dev->lms, LMS_CH_RX, dev->channel, &freq);
 	if (r == LMS_SUCCESS) return (uint32_t)(freq);
 	return -0.0;
 }
@@ -97,7 +100,7 @@ int rtlsdr_get_tuner_gains(rtlsdr_dev_t *dev, int *gains)
 
 int rtlsdr_set_tuner_bandwidth(rtlsdr_dev_t *dev, uint32_t bw)
 {
-	return LMS_SetLPFBW(dev->lms, false, dev->channel, (double)(bw));
+	return LMS_SetLPFBW(dev->lms, LMS_CH_RX, dev->channel, (double)(bw));
 }
 
 int rtlsdr_set_tuner_gain(rtlsdr_dev_t *dev, int gain)
@@ -113,7 +116,7 @@ int rtlsdr_get_tuner_gain(rtlsdr_dev_t *dev)
 int rtlsdr_set_tuner_if_gain(rtlsdr_dev_t *dev, int stage, int gain)
 {
 	//gain is in 10ths of a dB
-	return LMS_SetGaindB(dev->lms, false, dev->channel, (double)(gain)/10);
+	return LMS_SetGaindB(dev->lms, LMS_CH_RX, dev->channel, (double)(gain)/10);
 }
 
 int rtlsdr_set_tuner_gain_mode(rtlsdr_dev_t *dev, int mode)
@@ -127,13 +130,14 @@ int rtlsdr_set_sample_rate(rtlsdr_dev_t *dev, uint32_t samp_rate)
 	int ovs = 32;
 	while (samp_rate*ovs > 640e6) ovs /= 2;
 	if (ovs < 1) return -1;
-	return LMS_SetSampleRateDir(dev->lms, false, (double)(samp_rate), ovs);
+	dev->rate = (double)(samp_rate);
+	return LMS_SetSampleRateDir(dev->lms, LMS_CH_RX, (double)(samp_rate), ovs);
 }
 
 uint32_t rtlsdr_get_sample_rate(rtlsdr_dev_t *dev)
 {
 	double host_Hz, rf_Hz;
-	int r = LMS_GetSampleRate(dev->lms, false, dev->channel, &host_Hz, &rf_Hz);
+	int r = LMS_GetSampleRate(dev->lms, LMS_CH_RX, dev->channel, &host_Hz, &rf_Hz);
 	if (r == LMS_SUCCESS) return (uint32_t)(host_Hz);
 	return -0.0;
 }
@@ -170,8 +174,7 @@ int rtlsdr_get_offset_tuning(rtlsdr_dev_t *dev)
 
 uint32_t rtlsdr_get_device_count(void)
 {
-	lms_info_str_t dev_list[256];
-	return LMS_GetDeviceList(dev_list);
+	return LMS_GetDeviceList(NULL);
 }
 
 static void read_info_field(const char *dev_info, const char *key, char *output)
@@ -249,14 +252,32 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	read_info_field(&dev_list[index][0], NULL, (*out_dev)->product);
 	read_info_field(&dev_list[index][0], "serial=", (*out_dev)->serial);
 	(*out_dev)->channel = 0; //default is channel 0 (A)
-	LMS_Init((*out_dev)->lms);
-	LMS_EnableChannel((*out_dev)->lms, false, (*out_dev)->channel, true);
+	(*out_dev)->rate = 8e6; //some default will do
+	(*out_dev)->stream_active = false;
+
+	r = LMS_Init((*out_dev)->lms);
+	if (r != LMS_SUCCESS) printf("LMS_Init() failed\n");
+
+	r = LMS_EnableChannel((*out_dev)->lms, LMS_CH_RX, (*out_dev)->channel, true);
+	if (r != LMS_SUCCESS) printf("LMS_EnableChannel() failed\n");
+
+	(*out_dev)->stream.handle = 0;
+	(*out_dev)->stream.isTx = LMS_CH_RX;
+	(*out_dev)->stream.channel = (*out_dev)->channel;
+	(*out_dev)->stream.fifoSize = 1024 * 1024;
+	(*out_dev)->stream.throughputVsLatency = 1.0;
+	(*out_dev)->stream.dataFmt = LMS_FMT_I16;
+	r = LMS_SetupStream((*out_dev)->lms, &(*out_dev)->stream);
+	if (r != LMS_SUCCESS) printf("LMS_SetupStream() failed\n");
+
 	return 0;
 }
 
 int rtlsdr_close(rtlsdr_dev_t *dev)
 {
-	LMS_EnableChannel(dev->lms, false, dev->channel, false);
+	if (!dev) return -1;
+	LMS_DestroyStream(dev->lms, &dev->stream);
+	LMS_EnableChannel(dev->lms, LMS_CH_RX, dev->channel, false);
 	LMS_Close(dev->lms);
 	free(dev);
 	return 0;
@@ -264,10 +285,41 @@ int rtlsdr_close(rtlsdr_dev_t *dev)
 
 int rtlsdr_reset_buffer(rtlsdr_dev_t *dev)
 {
+	int r;
+	if (!dev) return -1;
+	if (dev->stream_active) return 0;
+	r = LMS_Calibrate(dev->lms, LMS_CH_RX, dev->channel, dev->rate, 0);
+	if (r != LMS_SUCCESS) printf("LMS_Calibrate() failed\n");
+	LMS_StartStream(&dev->stream);
+	dev->stream_active = true;
+	return 0;
 }
 
 int rtlsdr_read_sync(rtlsdr_dev_t *dev, void *buf, int len, int *n_read)
 {
+	int r, i;
+	int8_t *out = (int8_t *)buf;
+	int16_t samples[len*2];
+
+	if (!dev) return -1;
+	if (!dev->stream_active) return rtlsdr_reset_buffer(dev); //ensure start if not
+
+	while (true)
+	{
+		r = LMS_RecvStream(&dev->stream, samples, len, NULL, 1);
+		if (!dev->stream_active) return -1; //done
+		if (r == 0) continue; //continue on timeout
+		if (r < 0) return -1; //error condition
+		break;
+	}
+
+	*n_read = r*2;
+	for (i = 0; i < *n_read; i++)
+	{
+		out[i] = (int8_t)(samples[i] >> 8);
+		out[i] += 127;
+	}
+	return 0;
 }
 
 int rtlsdr_wait_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx)
@@ -276,13 +328,43 @@ int rtlsdr_wait_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx)
 	return -1;
 }
 
+#define DEFAULT_BUF_LENGTH	(16 * 32 * 512)
+
 int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 			  uint32_t buf_num, uint32_t buf_len)
 {
+	uint32_t i, len;
+	int r;
+	uint32_t len_avail = buf_len?buf_len:DEFAULT_BUF_LENGTH;
+	int8_t out[2*len_avail];
+	int16_t samples[2*len_avail];
+
+	if (!dev) return -1;
+	if (!dev->stream_active) return rtlsdr_reset_buffer(dev); //ensure start if not
+
+	while (dev->stream_active)
+	{
+		r = LMS_RecvStream(&dev->stream, samples, len_avail, NULL, 1);
+		if (r == 0) continue; //continue on timeout
+		if (r < 0) return -1; //error condition
+
+		len = r*2;
+		for (i = 0; i < len; i++)
+		{
+			out[i] = (int8_t)(samples[i] >> 8);
+			out[i] += 127;
+		}
+		cb((unsigned char *)out, len, ctx);
+	}
+	return 0;
 }
 
 int rtlsdr_cancel_async(rtlsdr_dev_t *dev)
 {
+	if (!dev) return -1;
+	LMS_StopStream(&dev->stream);
+	dev->stream_active = false;
+	return 0;
 }
 
 int rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on)
