@@ -336,15 +336,15 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 	uint32_t i, len;
 	int r;
 	uint32_t len_avail = buf_len?buf_len:DEFAULT_BUF_LENGTH;
-	int8_t out[2*len_avail];
-	int16_t samples[2*len_avail];
+	int8_t out[len_avail];
+	int16_t samples[len_avail];
 
 	if (!dev) return -1;
 	if (!dev->stream_active) return rtlsdr_reset_buffer(dev); //ensure start if not
 
 	while (dev->stream_active)
 	{
-		r = LMS_RecvStream(&dev->stream, samples, len_avail, NULL, 1);
+		r = LMS_RecvStream(&dev->stream, samples, len_avail/2, NULL, 1);
 		if (r == 0) continue; //continue on timeout
 		if (r < 0) return -1; //error condition
 
