@@ -249,6 +249,28 @@ int rtlsdr_get_index_by_serial(const char *serial)
 	return -3;
 }
 
+static void init_from_env(rtlsdr_dev_t *dev)
+{
+	int r;
+	const char *LMS_ANT = getenv("LMS_ANT");
+	const char *LMS_CHAN = getenv("LMS_CHAN");
+	int path = LMS_PATH_LNAL;
+
+	//extract antenna path
+	if (LMS_ANT != NULL && strcmp(LMS_ANT, "LNAL") == 0) path = LMS_PATH_LNAL;
+	if (LMS_ANT != NULL && strcmp(LMS_ANT, "LNAW") == 0) path = LMS_PATH_LNAW;
+	if (LMS_ANT != NULL && strcmp(LMS_ANT, "LNAH") == 0) path = LMS_PATH_LNAH;
+
+	//extract channel
+	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "0") == 0) dev->channel = 0;
+	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "1") == 0) dev->channel = 1;
+	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "A") == 0) dev->channel = 0;
+	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "B") == 0) dev->channel = 1;
+
+	r = LMS_SetAntenna(dev->lms, LMS_CH_RX, dev->channel, path);
+	if (r != LMS_SUCCESS) error("LMS_SetAntenna() failed");
+}
+
 int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 {
 	lms_info_str_t dev_list[256];
@@ -272,13 +294,14 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	r = LMS_Init((*out_dev)->lms);
 	if (r != LMS_SUCCESS) error("LMS_Init() failed");
 
+	//initializations that can be overridden with env vars
+	init_from_env(*out_dev);
+
 	r = LMS_EnableChannel((*out_dev)->lms, LMS_CH_RX, (*out_dev)->channel, true);
 	if (r != LMS_SUCCESS) error("LMS_EnableChannel() failed");
 
 	LMS_EnableCalibCache((*out_dev)->lms, true);
 
-	r = LMS_SetAntenna((*out_dev)->lms, LMS_CH_RX, (*out_dev)->channel, LMS_PATH_LNAL);
-	if (r != LMS_SUCCESS) error("LMS_SetAntenna() failed");
 	return 0;
 }
 
