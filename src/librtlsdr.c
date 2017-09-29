@@ -31,7 +31,7 @@ struct rtlsdr_dev {
 	char product[256];
 	char serial[256];
 	int channel;
-	double rate;
+	double bw;
 	lms_stream_t stream;
 	bool stream_active;
 };
@@ -254,6 +254,7 @@ static void init_from_env(rtlsdr_dev_t *dev)
 	int r;
 	const char *LMS_ANT = getenv("LMS_ANT");
 	const char *LMS_CHAN = getenv("LMS_CHAN");
+	const char *LMS_BW = getenv("LMS_BW");
 	int path = LMS_PATH_LNAL;
 
 	//extract antenna path
@@ -266,6 +267,9 @@ static void init_from_env(rtlsdr_dev_t *dev)
 	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "1") == 0) dev->channel = 1;
 	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "A") == 0) dev->channel = 0;
 	if (LMS_CHAN != NULL && strcmp(LMS_CHAN, "B") == 0) dev->channel = 1;
+
+	//extract filter bw for cal
+	if (LMS_BW != NULL) dev->bw = atof(LMS_BW);
 
 	r = LMS_SetAntenna(dev->lms, LMS_CH_RX, dev->channel, path);
 	if (r != LMS_SUCCESS) error("LMS_SetAntenna() failed");
@@ -288,7 +292,7 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	read_info_field(&dev_list[index][0], NULL, (*out_dev)->product);
 	read_info_field(&dev_list[index][0], "serial=", (*out_dev)->serial);
 	(*out_dev)->channel = 0; //default is channel 0 (A)
-	(*out_dev)->rate = 8e6; //some default will do
+	(*out_dev)->bw = 8e6; //some default will do
 	(*out_dev)->stream_active = false;
 
 	r = LMS_Init((*out_dev)->lms);
@@ -319,7 +323,7 @@ static int start_stream(rtlsdr_dev_t *dev)
 	int r;
 	if (!dev) return -1;
 	if (dev->stream_active) return 0;
-	r = LMS_Calibrate(dev->lms, LMS_CH_RX, dev->channel, dev->rate, 0);
+	r = LMS_Calibrate(dev->lms, LMS_CH_RX, dev->channel, dev->bw, 0);
 	if (r != LMS_SUCCESS) error("LMS_Calibrate() failed");
 
 	dev->stream.handle = 0;
